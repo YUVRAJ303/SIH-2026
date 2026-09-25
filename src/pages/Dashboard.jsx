@@ -69,11 +69,20 @@ export default function Dashboard() {
         onSelectLocation={handleLocationChange}
       />
 
-      {/* Section 4: Delhi NCR Spatial Map (full width — has its own internal dual-map grid) */}
+      {/* Section 4: Delhi NCR Spatial Map (full width, own toggleable card) */}
       <NCRMap
         selectedLocation={selectedLocation}
         onSelectLocation={handleLocationChange}
       />
+
+      {/* Section 2 & 3: 72h Forecast Chart + Weather Panel side by side */}
+      <div className="grid-top-row">
+        <ForecastChart
+          forecastPoints={forecastPoints}
+          locationName={activeData.name}
+        />
+        <WeatherPanel weatherData={activeData.weather} />
+      </div>
 
       {/* Middle Row: Inversion Intelligence, Plume Intelligence, AI Correction */}
       <div className="grid-intel-row">
