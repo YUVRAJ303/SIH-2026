@@ -75,14 +75,14 @@ export default function Dashboard() {
         onSelectLocation={handleLocationChange}
       />
 
-      {/* Section 2 & 3: 72h Forecast Chart + Weather Panel side by side */}
-      <div className="grid-top-row">
-        <ForecastChart
-          forecastPoints={forecastPoints}
-          locationName={activeData.name}
-        />
-        <WeatherPanel weatherData={activeData.weather} />
-      </div>
+      {/* Section 2: 72h Forecast Chart — FULL WIDTH, alone on its own row */}
+      <ForecastChart
+        forecastPoints={forecastPoints}
+        locationName={activeData.name}
+      />
+
+      {/* Section 3: Coupled Weather Parameters — FULL WIDTH, alone on its own row */}
+      <WeatherPanel weatherData={activeData.weather} />
 
       {/* Middle Row: Inversion Intelligence, Plume Intelligence, AI Correction */}
       <div className="grid-intel-row">
