@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+import { fetchAirQualityByCoords } from '../api';
 import { LOCATIONS, LOCATION_DATA, getAQICategory, AQI_CATEGORIES } from '../data/demoData';
-import { Map, Navigation, Wind } from 'lucide-react';
+import { Map, Navigation, Wind, LocateFixed } from 'lucide-react';
 
 // ---------- Custom Marker Generator with AQI badge ----------
 function createCustomMarkerIcon(aqi, isSelected) {
@@ -59,8 +60,71 @@ function getHeatRadius(aqi) {
   return 2000;
 }
 
+function createUserMarkerIcon() {
+  return L.divIcon({
+    className: 'user-pin',
+    html: `
+      <div style="
+        background: #3b82f6;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 3px solid #ffffff;
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.4), 0 2px 8px rgba(0,0,0,0.3);
+      "></div>
+    `,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+function DynamicMarker({ pinData }) {
+  const map = useMap();
+  const [aqi, setAqi] = useState(null);
+
+  useEffect(() => {
+    if (pinData) {
+      if (pinData.autoPan) {
+        map.flyTo(pinData.coords, 12, { animate: true, duration: 1.5 });
+      }
+      setAqi(null); // Reset when new location clicked
+      fetchAirQualityByCoords(pinData.coords[0], pinData.coords[1]).then(data => {
+        if (data && data.current) {
+          setAqi(data.current.us_aqi);
+        }
+      });
+    }
+  }, [pinData, map]);
+
+  if (!pinData) return null;
+
+  return (
+    <Marker position={pinData.coords} icon={createUserMarkerIcon()}>
+      <Popup>
+        <div style={{ padding: 4, fontWeight: 'bold' }}>
+          {pinData.label}
+          {aqi !== null ? (
+            <div style={{marginTop: 4, color: '#3b82f6', fontSize: 13}}>Current AQI: {aqi}</div>
+          ) : (
+             <div style={{marginTop: 4, color: '#64748b', fontSize: 12}}>Fetching AQI...</div>
+          )}
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
+function MapClickHandler({ onMapClick }) {
+  useMapEvents({
+    click(e) {
+      onMapClick([e.latlng.lat, e.latlng.lng]);
+    }
+  });
+  return null;
+}
+
 // ---------- View 1: Station Sensor Map (Real Leaflet Map with Markers) ----------
-function StationMap({ selectedLocation, onSelectLocation, centerCoords, selectedLocObj }) {
+function StationMap({ selectedLocation, onSelectLocation, centerCoords, selectedLocObj, dynamicPin, onMapClick }) {
   return (
     <MapContainer
       center={centerCoords}
@@ -70,12 +134,13 @@ function StationMap({ selectedLocation, onSelectLocation, centerCoords, selected
       attributionControl={true}
     >
       <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        subdomains="abcd"
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         maxZoom={19}
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
       <MapRecenter center={[selectedLocObj.lat, selectedLocObj.lng]} />
+      <DynamicMarker pinData={dynamicPin} />
+      <MapClickHandler onMapClick={onMapClick} />
 
       {LOCATIONS.map((loc) => {
         const data = LOCATION_DATA[loc.id];
@@ -127,7 +192,7 @@ function StationMap({ selectedLocation, onSelectLocation, centerCoords, selected
 }
 
 // ---------- View 2: AQI Heatmap Map (Real Leaflet Map with Concentric Circles) ----------
-function AQIHeatMap({ selectedLocation, onSelectLocation, centerCoords, selectedLocObj }) {
+function AQIHeatMap({ selectedLocation, onSelectLocation, centerCoords, selectedLocObj, dynamicPin, onMapClick }) {
   return (
     <MapContainer
       center={centerCoords}
@@ -137,12 +202,13 @@ function AQIHeatMap({ selectedLocation, onSelectLocation, centerCoords, selected
       attributionControl={true}
     >
       <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        subdomains="abcd"
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         maxZoom={19}
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
       <MapRecenter center={[selectedLocObj.lat, selectedLocObj.lng]} />
+      <DynamicMarker pinData={dynamicPin} />
+      <MapClickHandler onMapClick={onMapClick} />
 
       {LOCATIONS.map((loc) => {
         const data = LOCATION_DATA[loc.id];
@@ -209,6 +275,31 @@ function AQIHeatMap({ selectedLocation, onSelectLocation, centerCoords, selected
 // ---------- Main Component ----------
 export default function NCRMap({ selectedLocation, onSelectLocation }) {
   const [activeView, setActiveView] = useState('station'); // 'station' | 'heatmap'
+  const [dynamicPin, setDynamicPin] = useState(null);
+
+  const handleLocateMe = () => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition((position) => {
+        setDynamicPin({
+          coords: [position.coords.latitude, position.coords.longitude],
+          label: 'You are here',
+          autoPan: true
+        });
+      }, (err) => {
+        alert('Could not fetch your location. Please check browser permissions.');
+      });
+    } else {
+      alert('Geolocation is not supported by your browser.');
+    }
+  };
+
+  const handleMapClick = (coords) => {
+    setDynamicPin({
+      coords,
+      label: 'Clicked Location',
+      autoPan: false
+    });
+  };
 
   const selectedLocObj = LOCATIONS.find((l) => l.id === selectedLocation) || LOCATIONS[0];
   const centerCoords = [28.6139, 77.209]; // Real Delhi centroid (India Gate area)
@@ -234,13 +325,42 @@ export default function NCRMap({ selectedLocation, onSelectLocation }) {
         <div
           style={{
             display: 'flex',
-            background: '#f1f5f9',
-            border: '1px solid #cbd5e1',
-            borderRadius: 6,
-            padding: 3,
-            gap: 2,
+            alignItems: 'center',
+            gap: 8,
           }}
         >
+          <button
+            onClick={handleLocateMe}
+            style={{
+              fontSize: 11.5,
+              padding: '5px 12px',
+              borderRadius: 6,
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#3b82f6',
+              cursor: 'pointer',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+              transition: 'all 0.15s ease',
+            }}
+          >
+            <LocateFixed size={12} />
+            Locate Me
+          </button>
+
+          <div
+            style={{
+              display: 'flex',
+              background: '#f1f5f9',
+              border: '1px solid #cbd5e1',
+              borderRadius: 6,
+              padding: 3,
+              gap: 2,
+            }}
+          >
           <button
             onClick={() => setActiveView('station')}
             style={{
@@ -281,6 +401,7 @@ export default function NCRMap({ selectedLocation, onSelectLocation }) {
             <Wind size={12} />
             AQI Heatmap
           </button>
+          </div>
         </div>
       </div>
 
@@ -292,6 +413,8 @@ export default function NCRMap({ selectedLocation, onSelectLocation }) {
             onSelectLocation={onSelectLocation}
             centerCoords={centerCoords}
             selectedLocObj={selectedLocObj}
+            dynamicPin={dynamicPin}
+            onMapClick={handleMapClick}
           />
         ) : (
           <AQIHeatMap
@@ -299,6 +422,8 @@ export default function NCRMap({ selectedLocation, onSelectLocation }) {
             onSelectLocation={onSelectLocation}
             centerCoords={centerCoords}
             selectedLocObj={selectedLocObj}
+            dynamicPin={dynamicPin}
+            onMapClick={handleMapClick}
           />
         )}
       </div>
