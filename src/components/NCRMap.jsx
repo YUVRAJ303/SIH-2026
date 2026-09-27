@@ -123,8 +123,139 @@ function MapClickHandler({ onMapClick }) {
   return null;
 }
 
+function RegionalAQICalculator({ isHeatmap }) {
+  const map = useMap();
+  const [regionalData, setRegionalData] = useState(null);
+  const [isCalculating, setIsCalculating] = useState(false);
+
+  useEffect(() => {
+    let timeoutId;
+    
+    const handleMoveEnd = () => {
+      setIsCalculating(false);
+      clearTimeout(timeoutId);
+      
+      timeoutId = setTimeout(async () => {
+        setIsCalculating(true);
+        const bounds = map.getBounds();
+        const center = map.getCenter();
+        
+        const nw = bounds.getNorthWest();
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        const se = bounds.getSouthEast();
+        
+        const coordsList = [
+          { id: 'nw', lat: nw.lat, lng: nw.lng },
+          { id: 'ne', lat: ne.lat, lng: ne.lng },
+          { id: 'sw', lat: sw.lat, lng: sw.lng },
+          { id: 'se', lat: se.lat, lng: se.lng },
+          { id: 'center', lat: center.lat, lng: center.lng }
+        ];
+        
+        try {
+          const promises = coordsList.map(p => fetchAirQualityByCoords(p.lat, p.lng));
+          const results = await Promise.all(promises);
+          
+          let sum = 0;
+          let count = 0;
+          const pointsWithData = [];
+          
+          results.forEach((data, index) => {
+            if (data && data.current && data.current.us_aqi) {
+              sum += data.current.us_aqi;
+              count++;
+              pointsWithData.push({
+                ...coordsList[index],
+                aqi: data.current.us_aqi
+              });
+            }
+          });
+          
+          if (count > 0) {
+            setRegionalData({
+              average: Math.round(sum / count),
+              points: pointsWithData,
+              radius: map.distance(center, nw) // distance to corner for heatmap sizing
+            });
+          } else {
+            setRegionalData(null);
+          }
+        } catch (e) {
+          console.error("Failed to calculate regional AQI", e);
+        } finally {
+          setIsCalculating(false);
+        }
+      }, 3000);
+    };
+
+    map.on('moveend', handleMoveEnd);
+    handleMoveEnd();
+
+    return () => {
+      map.off('moveend', handleMoveEnd);
+      clearTimeout(timeoutId);
+    };
+  }, [map]);
+
+  const cat = regionalData ? getAQICategory(regionalData.average) : null;
+
+  return (
+    <>
+      {/* 5-Point Procedural Heatmap (Only drawn in Heatmap view) */}
+      {isHeatmap && regionalData && regionalData.points.map(pt => {
+        const ptCat = getAQICategory(pt.aqi);
+        return (
+          <React.Fragment key={pt.id}>
+            <Circle
+              center={[pt.lat, pt.lng]}
+              radius={regionalData.radius * 0.7}
+              pathOptions={{
+                color: ptCat.color,
+                fillColor: ptCat.color,
+                fillOpacity: 0.15,
+                weight: 0
+              }}
+            />
+            <Circle
+              center={[pt.lat, pt.lng]}
+              radius={regionalData.radius * 0.4}
+              pathOptions={{
+                color: ptCat.color,
+                fillColor: ptCat.color,
+                fillOpacity: 0.25,
+                weight: 0
+              }}
+            />
+          </React.Fragment>
+        );
+      })}
+
+    </>
+  );
+}
+
 // ---------- View 1: Station Sensor Map (Real Leaflet Map with Markers) ----------
 function StationMap({ selectedLocation, onSelectLocation, centerCoords, selectedLocObj, dynamicPin, onMapClick }) {
+  const [liveData, setLiveData] = useState({});
+
+  useEffect(() => {
+    LOCATIONS.forEach(loc => {
+      fetchAirQualityByCoords(loc.lat, loc.lng).then(res => {
+        if (res && res.current) {
+          setLiveData(prev => ({
+            ...prev,
+            [loc.id]: {
+              aqi: res.current.us_aqi,
+              pm25: res.current.pm2_5 || '--',
+              pm10: res.current.pm10 || '--'
+            }
+          }));
+        }
+      });
+    });
+  }, []);
+
   return (
     <MapContainer
       center={centerCoords}
@@ -139,12 +270,18 @@ function StationMap({ selectedLocation, onSelectLocation, centerCoords, selected
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
       <MapRecenter center={[selectedLocObj.lat, selectedLocObj.lng]} />
+      <RegionalAQICalculator isHeatmap={false} />
       <DynamicMarker pinData={dynamicPin} />
       <MapClickHandler onMapClick={onMapClick} />
 
       {LOCATIONS.map((loc) => {
-        const data = LOCATION_DATA[loc.id];
-        const aqi = data ? data.current.aqi : loc.defaultAQI;
+        const live = liveData[loc.id];
+        const fallback = LOCATION_DATA[loc.id];
+        
+        const aqi = live ? live.aqi : loc.defaultAQI;
+        const pm25 = live ? live.pm25 : (fallback?.current?.pm25 || '--');
+        const pm10 = live ? live.pm10 : (fallback?.current?.pm10 || '--');
+        
         const cat = getAQICategory(aqi);
         const isSelected = loc.id === selectedLocation;
 
@@ -161,10 +298,10 @@ function StationMap({ selectedLocation, onSelectLocation, centerCoords, selected
               <div style={{ padding: 4 }}>
                 <strong style={{ fontSize: 13, color: '#0f172a' }}>{loc.name}</strong>
                 <div style={{ marginTop: 4, fontSize: 12 }}>
-                  AQI: <strong style={{ color: cat.textColor }}>{aqi} ({cat.label})</strong>
+                  AQI: <strong style={{ color: cat.textColor }}>{aqi} ({cat.label}) {live ? ' (Live)' : ''}</strong>
                 </div>
                 <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                  PM2.5: {data.current.pm25} µg/m³ | PM10: {data.current.pm10} µg/m³
+                  PM2.5: {pm25} µg/m³ | PM10: {pm10} µg/m³
                 </div>
                 <button
                   onClick={() => onSelectLocation(loc.id)}
@@ -207,67 +344,9 @@ function AQIHeatMap({ selectedLocation, onSelectLocation, centerCoords, selected
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       />
       <MapRecenter center={[selectedLocObj.lat, selectedLocObj.lng]} />
+      <RegionalAQICalculator isHeatmap={true} />
       <DynamicMarker pinData={dynamicPin} />
       <MapClickHandler onMapClick={onMapClick} />
-
-      {LOCATIONS.map((loc) => {
-        const data = LOCATION_DATA[loc.id];
-        const aqi = data ? data.current.aqi : loc.defaultAQI;
-        const cat = getAQICategory(aqi);
-        const isSelected = loc.id === selectedLocation;
-        const baseRadius = getHeatRadius(aqi);
-
-        return (
-          <React.Fragment key={loc.id}>
-            {/* Outer soft glow ring - simulates diffusion */}
-            <Circle
-              center={[loc.lat, loc.lng]}
-              radius={baseRadius}
-              pathOptions={{
-                color: cat.color,
-                fillColor: cat.color,
-                fillOpacity: 0.12,
-                weight: 0,
-              }}
-            />
-            {/* Middle ring */}
-            <Circle
-              center={[loc.lat, loc.lng]}
-              radius={baseRadius * 0.6}
-              pathOptions={{
-                color: cat.color,
-                fillColor: cat.color,
-                fillOpacity: 0.22,
-                weight: 0,
-              }}
-            />
-            {/* Core hotspot */}
-            <Circle
-              center={[loc.lat, loc.lng]}
-              radius={baseRadius * 0.28}
-              eventHandlers={{ click: () => onSelectLocation(loc.id) }}
-              pathOptions={{
-                color: isSelected ? '#ffffff' : cat.color,
-                fillColor: cat.color,
-                fillOpacity: 0.55,
-                weight: isSelected ? 2 : 0,
-              }}
-            >
-              <Popup>
-                <div style={{ padding: 4 }}>
-                  <strong style={{ fontSize: 13, color: '#0f172a' }}>{loc.name}</strong>
-                  <div style={{ marginTop: 4, fontSize: 12 }}>
-                    AQI: <strong style={{ color: cat.textColor }}>{aqi} ({cat.label})</strong>
-                  </div>
-                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                    PM2.5: {data.current.pm25} µg/m³ | PM10: {data.current.pm10} µg/m³
-                  </div>
-                </div>
-              </Popup>
-            </Circle>
-          </React.Fragment>
-        );
-      })}
     </MapContainer>
   );
 }

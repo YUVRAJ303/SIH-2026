@@ -7,6 +7,25 @@ export const LOCATIONS = [
   { id: 'ghaziabad', name: 'Ghaziabad (Vasundhara)', lat: 28.6692, lng: 77.4538, defaultAQI: 212 },
   { id: 'gurugram', name: 'Gurugram (Vikas Sadan)', lat: 28.4595, lng: 77.0266, defaultAQI: 151 },
   { id: 'faridabad', name: 'Faridabad (New Industrial Town)', lat: 28.4089, lng: 77.3178, defaultAQI: 176 },
+  
+  // Extra NCR Regions
+  { id: 'greater_noida', name: 'Greater Noida', lat: 28.4744, lng: 77.5040, defaultAQI: 155 },
+  { id: 'rohtak', name: 'Rohtak', lat: 28.8955, lng: 76.5892, defaultAQI: 140 },
+  { id: 'sonipat', name: 'Sonipat', lat: 28.9931, lng: 77.0151, defaultAQI: 148 },
+  { id: 'panipat', name: 'Panipat', lat: 29.3909, lng: 76.9635, defaultAQI: 162 },
+  { id: 'meerut', name: 'Meerut', lat: 28.9845, lng: 77.7064, defaultAQI: 170 },
+  
+  // Other Major Indian Cities
+  { id: 'mumbai', name: 'Mumbai (Bandra)', lat: 19.0760, lng: 72.8777, defaultAQI: 105 },
+  { id: 'bengaluru', name: 'Bengaluru (Koramangala)', lat: 12.9716, lng: 77.5946, defaultAQI: 72 },
+  { id: 'chennai', name: 'Chennai (Guindy)', lat: 13.0827, lng: 80.2707, defaultAQI: 85 },
+  { id: 'hyderabad', name: 'Hyderabad (Jubilee Hills)', lat: 17.3850, lng: 78.4867, defaultAQI: 90 },
+  { id: 'kolkata', name: 'Kolkata (Salt Lake)', lat: 22.5726, lng: 88.3639, defaultAQI: 195 },
+  { id: 'ahmedabad', name: 'Ahmedabad (Navrangpura)', lat: 23.0225, lng: 72.5714, defaultAQI: 150 },
+  { id: 'pune', name: 'Pune (Shivajinagar)', lat: 18.5204, lng: 73.8567, defaultAQI: 95 },
+  { id: 'lucknow', name: 'Lucknow (Gomti Nagar)', lat: 26.8467, lng: 80.9462, defaultAQI: 220 },
+  { id: 'patna', name: 'Patna', lat: 25.5941, lng: 85.1376, defaultAQI: 240 },
+  { id: 'jaipur', name: 'Jaipur', lat: 26.9124, lng: 75.7873, defaultAQI: 130 },
 ];
 
 export const AQI_CATEGORIES = [
